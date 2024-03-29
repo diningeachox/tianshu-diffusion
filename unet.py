@@ -15,8 +15,6 @@ class TemporalEncoding(nn.Module):
         """
         super().__init__()
 
-
-
         # register_buffer => Tensor which is not a parameter, but should be part of the modules state.
         # Used for tensors that need to be on the same device as the module.
         # persistent=False tells PyTorch to not add the buffer to the state dict (e.g. when we save the model)
@@ -28,7 +26,7 @@ class TemporalEncoding(nn.Module):
 
     @staticmethod
     def calc_embedding(timesteps, d_model):
-        # Create matrix of [SeqLen, HiddenDim] representing the positional encoding for max_len inputs
+        # Create matrix of [timsteps, d_model] representing the positional encoding for max_len inputs
         pe = torch.zeros(timesteps, d_model)
         positions = torch.arange(0, timesteps, dtype=torch.float).unsqueeze(1)
         #positions = timesteps.unsqueeze(1) #The positions are the timesteps (analogous to a text with max_len = t_max)
@@ -36,7 +34,7 @@ class TemporalEncoding(nn.Module):
         pe[:, 0::2] = torch.sin(positions * div_term)
         pe[:, 1::2] = torch.cos(positions * div_term)
         #pe = pe.unsqueeze(0)
-        return pe # Shape == [timesteps.shape[0], d_model]
+        return pe # Shape == [timesteps, d_model]
 
 '''
 AttentionBlocks

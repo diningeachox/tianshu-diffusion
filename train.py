@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from dataloader import CCDataset
 import torch.optim as optim
 from torchvision import datasets, transforms
+import argparse
 
 if __name__ == "__main__":
 
@@ -19,6 +20,7 @@ if __name__ == "__main__":
     # logger = logging.getLogger(__name__)
 
     #nn_module = UNet(3, 128, (1, 2, 4, 8))
+
 
     #Useful constants
     num_timesteps = 1000

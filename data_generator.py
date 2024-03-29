@@ -12,7 +12,7 @@ font = ImageFont.truetype(fontpath, 28)
 start = 0x4e00
 end = 0x9fa6
 
-#Draw every single chinese character
+# Draw every single chinese character and save the images 
 i = 0
 for x in range(start, end):
     img = np.ones((32,32,3),np.uint8) * 255
