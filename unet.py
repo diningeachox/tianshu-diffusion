@@ -41,8 +41,10 @@ AttentionBlocks
 Similar to attention blocks in the Transformer model
 '''
 class AttentionBlock(nn.Module):
-    def __init__(self, d):
+    def __init__(self, d, last=False, first=False):
         super().__init__()
+        self.last = last
+        self.first = first
         # x has shape (B, C, H, W)
         #d = x.shape[1]
         #Query
@@ -58,6 +60,8 @@ class AttentionBlock(nn.Module):
         self.proj_w = nn.Parameter(torch.randn(d, d))
         self.proj_b = nn.Parameter(torch.randn(d))
 
+        self.norm = nn.GroupNorm(num_groups=32, num_channels=d)
+
         self.dim = d
 
     def forward(self, x):
@@ -65,6 +69,7 @@ class AttentionBlock(nn.Module):
         C = x.shape[1]
         H = x.shape[2]
         W = x.shape[3]
+        x = self.norm(x)
         x = torch.permute(x, (0, 2, 3, 1)) # permute to shape (B, H, W, C) for tensordot
 
         q = torch.tensordot(x, self.qw, dims=1)
@@ -147,21 +152,24 @@ Backbone model for the DDPM model (U-Net)
 '''
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, out_channels, n_res_blocks, attention_res, channel_scales=(1, 2, 4, 8), d_model=32, timesteps=[]):
+    def __init__(self, n_channels, out_channels, n_res_blocks, attention_res, channel_scales=(1, 2, 2, 2), d_model=32, timesteps=[]):
         super().__init__()
         #self.temb = TemporalEncoding(timesteps, d_model)
         self.channels = n_channels
         self.out_channels = out_channels
 
+        self.attention_res = attention_res
+
         self.fc0 = nn.Linear(n_channels, n_channels * 4)
         self.fc1 = nn.Linear(n_channels * 4, n_channels * 4)
 
         all_dims = (d_model, *[d_model * s for s in channel_scales])
+        resolutions = (32, 16, 8, 4)
 
         #Downsample blocks
         self.downsample = nn.ModuleList()
 
-        self.downsample.append(nn.Conv2d(3, n_channels, kernel_size=3, stride=1, padding=1, bias=True))
+        self.downsample.append(nn.Conv2d(out_channels, n_channels, kernel_size=3, stride=1, padding=1, bias=True))
         for idx, (in_c, out_c) in enumerate(zip(
             all_dims[:-1],
             all_dims[1:],
@@ -171,8 +179,12 @@ class UNet(nn.Module):
                 in_ch = in_c if block == 0 else out_c
                 self.downsample.append(ResidualBlock(d_model, in_ch, out_c, last=(block == n_res_blocks - 1)))
 
+                if resolutions[idx] in attention_res:
+                    self.downsample.append(AttentionBlock(out_c, last=(block == n_res_blocks - 1)))
+
             if idx != len(channel_scales) - 1:
                 self.downsample.append(nn.Conv2d(out_c, out_c, kernel_size=3, stride=2, padding=1, bias=False))
+
 
         #Middle
         self.middle = nn.ModuleList([
@@ -192,6 +204,9 @@ class UNet(nn.Module):
             for block in range(n_res_blocks + 1):
                 in_ch = in_c * 2 if block == 0 else in_c
                 self.upsample.append(ResidualBlock(d_model, in_ch, in_c, first=(block == 0)))
+
+                if resolutions[-idx] in attention_res:
+                    self.upsample.append(AttentionBlock(in_c))
 
             if idx != len(channel_scales) - 1:
                 self.upsample.append(nn.ConvTranspose2d(in_c, out_c, kernel_size=2, stride=2))
@@ -219,6 +234,12 @@ class UNet(nn.Module):
         for block in self.downsample:
             if isinstance(block, ResidualBlock):
                 x = block(x, temb)
+                if block.last:
+                    res = x.shape[2]
+                    if res not in self.attention_res:
+                        skip_connections.append(x) #Store these layers for skip connections
+            elif isinstance(block, AttentionBlock):
+                x = block(x)
                 if block.last:
                     skip_connections.append(x) #Store these layers for skip connections
             else:

@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 from unet import UNet
 import math
+from tqdm import tqdm
 
 '''
 Calculates the beta schedule for the forward diffusion
@@ -20,15 +21,16 @@ def beta_schedule(num_timesteps, type="linear"):
     return beta_t
 
 class DiffusionModel(nn.Module):
-    def __init__(self, betas):
+    def __init__(self, betas, out_channels=3, device='cpu'):
         super().__init__()
 
         #Coefficients
         self.timesteps = betas.shape[0]
         alphas = 1. - betas
-        alpha_bar = torch.cumprod(alphas, axis=0)
-        alpha_bar_prev = torch.cat((torch.tensor([1.]), alpha_bar[:-1]))
+        alpha_bar = torch.cumprod(alphas, axis=0).to(device)
+        alpha_bar_prev = torch.cat((torch.tensor([1.]).to(device), alpha_bar[:-1]))
 
+        self.device = device
 
         #Coefficients for forward process q(x_t | x_{t-1})
         self.sqrt_alpha_bar = torch.sqrt(alpha_bar)
@@ -40,11 +42,11 @@ class DiffusionModel(nn.Module):
         self.posterior_variance = betas * (1. - self.sqrt_alpha_bar_prev) / (1. - alpha_bar)
         self.posterior_mean_coef_0 = betas * self.sqrt_alpha_bar_prev / (1. - alpha_bar)
         self.posterior_mean_coef_t = (1. - alpha_bar_prev) * torch.sqrt(alphas) / (1. - alpha_bar)
-        self.posterior_log_variance_clipped = torch.log(torch.maximum(self.posterior_variance, 1e-20 * torch.ones_like(self.posterior_variance)))
+        self.posterior_log_variance_clipped = torch.log(torch.maximum(self.posterior_variance, 1e-20 * torch.ones_like(self.posterior_variance).to(device)))
 
 
         # Denoising model (UNet architecture)
-        self.denoiser = UNet(n_channels=128, out_channels=3, n_res_blocks=2, attention_res=(16,), channel_scales=(1, 2, 2, 2), d_model=128, timesteps=[])
+        self.denoiser = UNet(n_channels=128, out_channels=out_channels, n_res_blocks=1, attention_res=(1600,), channel_scales=(1, 2, 2, 2), d_model=128, timesteps=[]).to(device)
 
 
     def get_batch_coeffs(self, a, t, x_shape):
@@ -53,7 +55,7 @@ class DiffusionModel(nn.Module):
         Args:
             t - List of timesteps
         '''
-        coeffs = torch.gather(input=a, dim=0, index=t)
+        coeffs = torch.gather(input=a, dim=0, index=t).to(self.device)
         dims = tuple([t.shape[0]] + ((len(x_shape) - 1) * [1]))
         coeffs = torch.reshape(coeffs, dims) # Reshape for broadcasting
         return coeffs
@@ -64,7 +66,7 @@ class DiffusionModel(nn.Module):
     def forward_sample(self, x_prev, t, noise=None):
         #Standard normal
         if noise is None:
-            noise = torch.normal(mean=0, std=torch.ones_like(x_prev))
+            noise = torch.normal(mean=0, std=torch.ones_like(x_prev)).to(self.device)
 
         assert noise.shape == x_prev.shape
         alpha_bars = self.get_batch_coeffs(self.sqrt_alpha_bar, t, x_prev.shape)
@@ -75,7 +77,7 @@ class DiffusionModel(nn.Module):
     '''
     Forward Posterior q(x_{t-1} | x_t, x_0)
     '''
-    def forward_posterior(self, x_start, x_t, t, noise):
+    def forward_posterior(self, x_start, x_t, t):
         posterior_mean_coef_0 = self.get_batch_coeffs(self.posterior_mean_coef_0, t, x_t.shape)
         posterior_mean_coef_t = self.get_batch_coeffs(self.posterior_mean_coef_t, t, x_t.shape)
 
@@ -86,26 +88,28 @@ class DiffusionModel(nn.Module):
 
     '''
     Backward process p(x_{t-1} | x_t)
+    The last step p(x_0 | x_1) is an independent discrete decoder
     '''
     def backward_sample(self, x, t, temb_model):
 
         #Predict mean and variance using the UNet model
         pred_noise = self.denoiser(x, t, temb_model)
-        x_tilde = self.sqrt_recip_alpha_bar * x - self.sqrt_recip_minus_one_alpha_bar * pred_noise
+        sqrt_recip_alpha_bar = self.get_batch_coeffs(self.sqrt_recip_alpha_bar, t, x.shape)
+        sqrt_recip_minus_one_alpha_bar = self.get_batch_coeffs(self.sqrt_recip_minus_one_alpha_bar, t, x.shape)
+        x_tilde = sqrt_recip_alpha_bar * x - sqrt_recip_minus_one_alpha_bar * pred_noise
         mean, variance, log_variance = self.forward_posterior(x_tilde, x, t)
-        noise = torch.normal(mean=0, std=torch.ones_like(x)) # The random variable z in the paper
-        nonzero_mask = 1. - torch.eq(t, 0)
 
-        return mean + nonzero_mask * torch.exp(0.5 * log_variance) * noise
+        noise = torch.normal(mean=0, std=torch.ones_like(x)).to(self.device) # The random variable z in the paper
+        nonzero_mask = ~torch.eq(t, 0).to(self.device)
+        log_var = torch.exp(0.5 * log_variance).to(self.device)
+        return mean + nonzero_mask * log_var * noise
 
     def loss(self, x_prev, t, temb_model, noise=None):
         if noise is None:
-            noise = torch.normal(mean=0, std=torch.ones_like(x_prev))
+            noise = torch.normal(mean=0, std=torch.ones_like(x_prev)).to(self.device)
 
         x_noisy = self.forward_sample(x_prev, t, noise)
         x_recon = self.denoiser(x_noisy, t, temb_model)
-        print(x_noisy.shape)
-        print(x_recon.shape)
         assert x_noisy.shape == x_prev.shape
         assert x_noisy.shape == x_recon.shape
 
@@ -116,13 +120,14 @@ class DiffusionModel(nn.Module):
     '''
     Iteratively sample backward from x_{t_max} until we reconstruct an image fully, i.e. to x_0
     '''
-    def generate(self, shape, noise_fn):
-        i_0 = self.num_timesteps - 1
-        img_0 = noise_fn(shape=shape)
+    def generate(self, shape, noise_fn, temb_model):
+        i_0 = self.timesteps - 1
+        img_0 = noise_fn(shape=shape).to(self.device)
 
-        for t in range(i_0, -1, -1):
-            img_0 = backward_sample(img_0, t * torch.ones(shape[0]))
-
+        print("Generating sample image...")
+        for t in tqdm(range(i_0 - 1, -1, -1)):
+            times = (t * torch.ones(shape[0])).type(torch.LongTensor).to(self.device)
+            img_0 = self.backward_sample(img_0, times, temb_model)
         assert img_0.shape == shape
         return img_0
 
@@ -140,8 +145,8 @@ class DiffusionModel(nn.Module):
 
         # Constant variance interpolation
         #xt_interp = torch.sqrt(1 - alpha * alpha) * xt1 + alpha * xt2
-        for t in range(i_0, -1, -1):
-            xt_interp = backward_sample(xt_interp, t * torch.ones(shape[0]))
+        for t in tqdm(range(i_0, -1, -1)):
+            xt_interp = self.backward_sample(xt_interp, t * torch.ones(shape[0]))
 
         assert xt_interp.shape == shape
         return xt_interp
