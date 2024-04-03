@@ -11,7 +11,7 @@ Dataset of all standard Chinese characters
 '''
 class CCDataset(Dataset):
     def __init__(self, img_dir, transform=None):
-        self.img_labels = [f"char_{i}.png" for i in range(2000)] #20971 characters
+        self.img_labels = [f"char_{i}.png" for i in range(1000)] #20971 characters
         self.img_dir = img_dir
         self.transform = transform
         self.augmentations = 10

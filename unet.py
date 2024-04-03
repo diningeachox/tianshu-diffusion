@@ -164,7 +164,7 @@ class UNet(nn.Module):
         self.fc1 = nn.Linear(n_channels * 4, n_channels * 4)
 
         all_dims = (d_model, *[d_model * s for s in channel_scales])
-        resolutions = (32, 16, 8, 4)
+        resolutions = (64, 32, 16, 8, 4)
 
         #Downsample blocks
         self.downsample = nn.ModuleList()

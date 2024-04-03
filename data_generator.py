@@ -6,19 +6,22 @@ import cv2
 b,g,r,a = 0,0,0,0
 
 fontpath = "./fonts/NotoSerifSC-Bold.otf" # Choose the font
-font = ImageFont.truetype(fontpath, 28)
+font = ImageFont.truetype(fontpath, 60)
 
 # Range of unicode representations for Chinese characters
 start = 0x4e00
 end = 0x9fa6
 
-# Draw every single chinese character and save the images 
+# start = 0x554a
+# end = 0x57c4
+
+# Draw every single chinese character and save the images
 i = 0
 for x in range(start, end):
-    img = np.ones((32,32,3),np.uint8) * 255
+    img = np.ones((64,64,3),np.uint8) * 255
     img_pil = Image.fromarray(img)
     draw = ImageDraw.Draw(img_pil)
-    draw.text((2, -5),  chr(x), font = font, fill = (b, g, r, a))
+    draw.text((2, -15),  chr(x), font = font, fill = (b, g, r, a))
     print(f'Generating char_{i}.png')
     img = np.array(img_pil)
     cv2.imwrite(f'./images/char_{i}.png', img)

@@ -30,7 +30,7 @@ if __name__ == "__main__":
     batch_size = 32
     d_model = 128
     iterations = 2000
-    epochs = 3
+    epochs = 20
 
     iterations = 200
     generate = True
@@ -42,7 +42,7 @@ if __name__ == "__main__":
         [
             # transforms.RandomCrop((h,w)),
             transforms.ToPILImage(),
-            transforms.RandomHorizontalFlip(),
+            #transforms.RandomHorizontalFlip(),
             # transforms.RandomAffine(degrees=90, translate=(0.0,0.0)),
             # transforms.RandomAffine(degrees=180, translate=(0.0,0.0)),
             # transforms.RandomAffine(degrees=270, translate=(0.0,0.0)),
@@ -73,47 +73,47 @@ if __name__ == "__main__":
     '''
 
     #Load image data
-    # min_loss = 10000
-    # best_model = None
-    # for i in range(epochs):
-    #     model.train()
-    #     for batch_idx, (images, labels) in enumerate(train_dataloader, start=1):
-    #         #train_images, train_labels = next(iter(train_dataloader))
-    #         #print(train_images)
-    #         x = images.to(device)
-    #         bs = x.shape[0]
-    #         t_batched = torch.randint(0, num_timesteps, (bs,)).to(device) #Initial batch of timesteps
-    #
-    #
-    #         optimizer.zero_grad()
-    #         loss = model.loss(x, t_batched, temb_model)
-    #         loss.backward()
-    #         optimizer.step()
-    #
-    #         if loss.item() < min_loss:
-    #             min_loss = loss.item()
-    #             #save best model so far
-    #             torch.save(model.state_dict(), "./checkpoints/best_model.pt")
-    #
-    #         print(f"[Epoch {i+1}] \t Iteration {batch_idx+1}: loss = {loss.item()}")
+    min_loss = 10000
+    best_model = None
+    for i in range(epochs):
+        model.train()
+        for batch_idx, (images, labels) in enumerate(train_dataloader, start=1):
+            #train_images, train_labels = next(iter(train_dataloader))
+            #print(train_images)
+            x = images.to(device)
+            bs = x.shape[0]
+            t_batched = torch.randint(0, num_timesteps, (bs,)).to(device) #Initial batch of timesteps
 
-    #Save model
-    #torch.save(model.state_dict(), "./checkpoints/best_model.pt")
+
+            optimizer.zero_grad()
+            loss = model.loss(x, t_batched, temb_model)
+            loss.backward()
+            optimizer.step()
+
+            if loss.item() < min_loss:
+                min_loss = loss.item()
+                #save best model so far
+                torch.save(model.state_dict(), "./checkpoints/best_model.pt")
+
+            print(f"[Epoch {i+1}] \t Iteration {batch_idx+1}: loss = {loss.item()}")
+
+    # Save model
+    # torch.save(model.state_dict(), "./checkpoints/best_model.pt")
 
     '''
     Image generation
     '''
-    if generate:
-        loaded_model = DiffusionModel(betas=beta_schedule, out_channels=channels, device=device).to(device)
-        loaded_model.load_state_dict(torch.load("./checkpoints/best_model.pt"))
-        loaded_model.eval()
-        with torch.no_grad():
-            img = loaded_model.generate(shape=(1, channels, 32, 32), noise_fn=gaussian_noise, temb_model=temb_model)
-            #Normalize image to [0, 255]
-            img = img + 1. / 2.
-            img = img.squeeze(0).permute(1, 2, 0).cpu().numpy()
-            #print(img)
-            #cv2_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            plt.imshow(img)
-            plt.savefig("./samples/sample_1.png")
-            #cv2.imwrite('./samples/sample_1.png', cv2_img)
+    # if generate:
+    #     loaded_model = DiffusionModel(betas=beta_schedule, out_channels=channels, device=device).to(device)
+    #     loaded_model.load_state_dict(torch.load("./checkpoints/best_model.pt"))
+    #     loaded_model.eval()
+    #     with torch.no_grad():
+    #         img = loaded_model.generate(shape=(1, channels, 64, 64), noise_fn=gaussian_noise, temb_model=temb_model)
+    #         #Normalize image to [0, 255]
+    #         img = img + 1. / 2.
+    #         img = img.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    #         #print(img)
+    #         #cv2_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    #         plt.imshow(img)
+    #         plt.savefig("./samples/sample_1.png")
+    #         #cv2.imwrite('./samples/sample_1.png', cv2_img)
