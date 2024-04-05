@@ -13,8 +13,9 @@ def beta_schedule(num_timesteps, type="linear"):
     if type == "linear":
         beta_t = torch.linspace(1e-4, 2e-2, num_timesteps + 1)
     elif type == "cosine":
+        s = 0.008 # Offset to prevent beta_t from being too small near t=0
         linspace = torch.linspace(0, 1, num_timesteps + 1)
-        f_t = torch.cos((linspace + 0.008) / (1 + 0.008) * math.pi / 2) ** 2
+        f_t = torch.cos((linspace + s) / (1 + s) * math.pi / 2) ** 2
         bar_alpha_t = f_t / f_t[0]
         beta_t = torch.zeros_like(bar_alpha_t)
         beta_t[1:] = (1 - (bar_alpha_t[1:] / bar_alpha_t[:-1])).clamp(min=0, max=0.999)
@@ -134,9 +135,9 @@ class DiffusionModel(nn.Module):
     '''
     Interpolate between images
     '''
-    def interpolate(self, shape, x1, x2, t, alpha, noise_fn):
+    def interpolate(self, shape, x1, x2, t, alpha, noise_fn, temb_model):
         bs = shape[0]
-        t_batched = t * torch.ones(shape[0])
+        t_batched = (t * torch.ones(shape[0])).type(torch.LongTensor).to(self.device)
         xt1 = self.forward_sample(x1, t_batched)
         xt2 = self.forward_sample(x2, t_batched)
 
@@ -145,8 +146,11 @@ class DiffusionModel(nn.Module):
 
         # Constant variance interpolation
         #xt_interp = torch.sqrt(1 - alpha * alpha) * xt1 + alpha * xt2
-        for t in tqdm(range(i_0, -1, -1)):
-            xt_interp = self.backward_sample(xt_interp, t * torch.ones(shape[0]))
+
+        #Backward process starting from timestep=t
+        for s in tqdm(range(t, -1, -1)):
+            timesteps = (s * torch.ones(shape[0])).type(torch.LongTensor).to(self.device)
+            xt_interp = self.backward_sample(xt_interp, timesteps, temb_model)
 
         assert xt_interp.shape == shape
         return xt_interp

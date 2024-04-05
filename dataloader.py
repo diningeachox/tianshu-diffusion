@@ -1,20 +1,38 @@
 import os
-import torch
+import numpy as np
 from torch.utils.data import Dataset
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 import matplotlib.pyplot as plt
 from torchvision.io import read_image, ImageReadMode
 
+#Data taken from http://technology.chtsai.org/charfreq/characters.html
+def read_data(path):
+     chars = []
+     probs = []
+     total_weight = 0
+     with open(path, encoding='utf8') as file:
+         while True:
+             line = file.readline()
+             if len(line) == 0:
+                 break
+             char = line[:1]
+             freq = int(line[6:13].strip())
+             strokes = int(line[15:17].strip())
+             chars.append(char)
+             probs.append(freq)
+             total_weight += freq
+     return np.array(probs) / total_weight
+
 '''
 Dataset of all standard Chinese characters
 '''
 class CCDataset(Dataset):
     def __init__(self, img_dir, transform=None):
-        self.img_labels = [f"char_{i}.png" for i in range(1000)] #20971 characters
+        self.img_labels = [f"char_{i}.png" for i in range(13060)] #13060 characters
         self.img_dir = img_dir
         self.transform = transform
-        self.augmentations = 10
+        self.augmentations = 1
 
         #Load character images
         self.orig_images = []
@@ -41,3 +59,7 @@ class CCDataset(Dataset):
         if self.transform:
             image = self.transform(image)
         return image, label
+
+if __name__ == "__main__":
+    weights = read_data("chars.txt")
+    print(weights)

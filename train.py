@@ -1,8 +1,8 @@
 import torch
 from diffusion import DiffusionModel, beta_schedule
 from unet import UNet, TemporalEncoding
-from torch.utils.data import DataLoader
-from dataloader import CCDataset
+from torch.utils.data import DataLoader, WeightedRandomSampler
+from dataloader import CCDataset, read_data
 import torch.optim as optim
 from torchvision import datasets, transforms
 import argparse
@@ -30,7 +30,7 @@ if __name__ == "__main__":
     batch_size = 32
     d_model = 128
     iterations = 2000
-    epochs = 20
+    epochs = 50
 
     iterations = 200
     generate = True
@@ -51,15 +51,21 @@ if __name__ == "__main__":
         ]
     )
     training_data = CCDataset("./images", transform=transforms)
-    train_dataloader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
+
+    #Calculate weights for sampler
+    print("Calculating sampling weights...")
+    weights = read_data("chars.txt")
+    sampler = WeightedRandomSampler(weights, len(training_data), replacement=True)
+    train_dataloader = DataLoader(training_data, batch_size=batch_size, sampler=sampler)
     #test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
 
-    beta_schedule = beta_schedule(num_timesteps=num_timesteps).to(device)
+    beta_schedule = beta_schedule(num_timesteps=num_timesteps, type="linear").to(device)
     model = DiffusionModel(betas=beta_schedule, out_channels=channels, device=device).to(device)
     temb_model = TemporalEncoding(timesteps=num_timesteps, d_model=d_model).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
-
+    num_batches = len(training_data) // batch_size + 1
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs * num_batches)
     # Debug anomalies in computation graph
     torch.autograd.set_detect_anomaly(True)
 
@@ -89,6 +95,7 @@ if __name__ == "__main__":
             loss = model.loss(x, t_batched, temb_model)
             loss.backward()
             optimizer.step()
+            scheduler.step()
 
             if loss.item() < min_loss:
                 min_loss = loss.item()
