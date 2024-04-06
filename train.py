@@ -28,11 +28,10 @@ if __name__ == "__main__":
     #Useful constants
     num_timesteps = 1000
     batch_size = 32
-    d_model = 128
+    d_model = 32
     iterations = 2000
-    epochs = 50
+    epochs = 100
 
-    iterations = 200
     generate = True
     channels = 1
     #Prepare data
@@ -61,7 +60,7 @@ if __name__ == "__main__":
 
 
     beta_schedule = beta_schedule(num_timesteps=num_timesteps, type="linear").to(device)
-    model = DiffusionModel(betas=beta_schedule, out_channels=channels, device=device).to(device)
+    model = DiffusionModel(betas=beta_schedule, out_channels=channels, channel_scales=(1, 2, 4, 8), d_model=d_model, device=device).to(device)
     temb_model = TemporalEncoding(timesteps=num_timesteps, d_model=d_model).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
     num_batches = len(training_data) // batch_size + 1

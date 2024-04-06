@@ -10,14 +10,14 @@ import cv2
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 channels = 1
 num_timesteps = 1000
-d_model = 128
+d_model = 32
 w = 4
-h = 4
+h = 1
 fig = plt.figure(figsize=(8, 8))
 
 beta_schedule = beta_schedule(num_timesteps=num_timesteps).to(device)
 temb_model = TemporalEncoding(timesteps=num_timesteps, d_model=d_model).to(device)
-loaded_model = DiffusionModel(betas=beta_schedule, out_channels=channels, device=device).to(device)
+loaded_model = DiffusionModel(betas=beta_schedule, out_channels=channels, channel_scales=(1, 2, 4, 8), d_model=d_model, device=device).to(device)
 loaded_model.load_state_dict(torch.load("./checkpoints/best_model.pt"))
 loaded_model.eval()
 

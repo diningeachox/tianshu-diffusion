@@ -22,7 +22,7 @@ def beta_schedule(num_timesteps, type="linear"):
     return beta_t
 
 class DiffusionModel(nn.Module):
-    def __init__(self, betas, out_channels=3, device='cpu'):
+    def __init__(self, betas, out_channels=3, channel_scales=(1, 2, 2, 2), d_model=128, device='cpu'):
         super().__init__()
 
         #Coefficients
@@ -40,14 +40,14 @@ class DiffusionModel(nn.Module):
         self.sqrt_recip_alpha_bar = torch.sqrt(1. / alpha_bar)
         self.sqrt_recip_minus_one_alpha_bar = torch.sqrt(1. / alpha_bar - 1.)
         #Coefficients for posterior distribution q(x_{t-1} | x_t, x_0)
-        self.posterior_variance = betas * (1. - self.sqrt_alpha_bar_prev) / (1. - alpha_bar)
+        self.posterior_variance = betas * (1. - alpha_bar_prev) / (1. - alpha_bar)
         self.posterior_mean_coef_0 = betas * self.sqrt_alpha_bar_prev / (1. - alpha_bar)
         self.posterior_mean_coef_t = (1. - alpha_bar_prev) * torch.sqrt(alphas) / (1. - alpha_bar)
         self.posterior_log_variance_clipped = torch.log(torch.maximum(self.posterior_variance, 1e-20 * torch.ones_like(self.posterior_variance).to(device)))
 
 
         # Denoising model (UNet architecture)
-        self.denoiser = UNet(n_channels=128, out_channels=out_channels, n_res_blocks=1, attention_res=(1600,), channel_scales=(1, 2, 2, 2), d_model=128, timesteps=[]).to(device)
+        self.denoiser = UNet(n_channels=128, out_channels=out_channels, n_res_blocks=1, attention_res=(160,), channel_scales=channel_scales, d_model=d_model, timesteps=[]).to(device)
 
 
     def get_batch_coeffs(self, a, t, x_shape):
@@ -97,7 +97,8 @@ class DiffusionModel(nn.Module):
         pred_noise = self.denoiser(x, t, temb_model)
         sqrt_recip_alpha_bar = self.get_batch_coeffs(self.sqrt_recip_alpha_bar, t, x.shape)
         sqrt_recip_minus_one_alpha_bar = self.get_batch_coeffs(self.sqrt_recip_minus_one_alpha_bar, t, x.shape)
-        x_tilde = sqrt_recip_alpha_bar * x - sqrt_recip_minus_one_alpha_bar * pred_noise
+        x_tilde = sqrt_recip_alpha_bar * x - sqrt_recip_minus_one_alpha_bar * pred_noise #Predicted start from the noise
+        #x_tilde = torch.clamp(x_tilde, -1., 1.) #Clip values to range
         mean, variance, log_variance = self.forward_posterior(x_tilde, x, t)
 
         noise = torch.normal(mean=0, std=torch.ones_like(x)).to(self.device) # The random variable z in the paper

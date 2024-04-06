@@ -120,7 +120,7 @@ class ResidualBlock(nn.Module):
         self.first = first
         #Timestep embedding
         self.time_embedding_proj = nn.Sequential(
-            #nn.Linear(time_c, time_c),
+            nn.Linear(d_model * 4, d_model * 4),
             nn.SiLU(), #Swish activation function
             nn.Linear(d_model * 4, out_channels),
         )
@@ -155,21 +155,21 @@ class UNet(nn.Module):
     def __init__(self, n_channels, out_channels, n_res_blocks, attention_res, channel_scales=(1, 2, 2, 2), d_model=32, timesteps=[]):
         super().__init__()
         #self.temb = TemporalEncoding(timesteps, d_model)
-        self.channels = n_channels
+        self.channels = d_model
         self.out_channels = out_channels
 
         self.attention_res = attention_res
 
-        self.fc0 = nn.Linear(n_channels, n_channels * 4)
-        self.fc1 = nn.Linear(n_channels * 4, n_channels * 4)
+        self.fc0 = nn.Linear(d_model, d_model * 4)
+        self.fc1 = nn.Linear(d_model * 4, d_model * 4)
 
         all_dims = (d_model, *[d_model * s for s in channel_scales])
-        resolutions = (64, 32, 16, 8, 4)
+        resolutions = (32, 16, 8, 4)
 
         #Downsample blocks
         self.downsample = nn.ModuleList()
 
-        self.downsample.append(nn.Conv2d(out_channels, n_channels, kernel_size=3, stride=1, padding=1, bias=True))
+        self.downsample.append(nn.Conv2d(out_channels, d_model, kernel_size=3, stride=1, padding=1, bias=True))
         for idx, (in_c, out_c) in enumerate(zip(
             all_dims[:-1],
             all_dims[1:],

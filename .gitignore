@@ -3,3 +3,4 @@ __pycache__/
 data/
 checkpoints/
 simplified_chars/
+train_mnist.py

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from torchvision.io import read_image, ImageReadMode
 
 #Data taken from http://technology.chtsai.org/charfreq/characters.html
-def read_data(path):
+def read_data(path, n=1000):
      chars = []
      probs = []
      total_weight = 0
@@ -22,14 +22,15 @@ def read_data(path):
              chars.append(char)
              probs.append(freq)
              total_weight += freq
-     return np.array(probs) / total_weight
+     total = np.sum(np.array(probs)[:n])
+     return np.array(probs[:n]) / total
 
 '''
 Dataset of all standard Chinese characters
 '''
 class CCDataset(Dataset):
     def __init__(self, img_dir, transform=None):
-        self.img_labels = [f"char_{i}.png" for i in range(13060)] #13060 characters
+        self.img_labels = [f"char_{i}.png" for i in range(1000)] #13060 characters
         self.img_dir = img_dir
         self.transform = transform
         self.augmentations = 1
