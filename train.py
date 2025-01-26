@@ -27,10 +27,10 @@ if __name__ == "__main__":
 
     #Useful constants
     num_timesteps = 1000
-    batch_size = 32
-    d_model = 32
+    batch_size = 64
+    d_model = 64
     iterations = 2000
-    epochs = 100
+    epochs = 500
 
     generate = True
     channels = 1
@@ -49,21 +49,22 @@ if __name__ == "__main__":
             transforms.Normalize(mean, std),
         ]
     )
-    training_data = CCDataset("./images", transform=transforms)
+    dataset = CCDataset("./images", transform=transforms)
+    train_set, val_set = torch.utils.data.random_split(dataset, [0.9, 0.1])
 
     #Calculate weights for sampler
     print("Calculating sampling weights...")
     weights = read_data("chars.txt")
-    sampler = WeightedRandomSampler(weights, len(training_data), replacement=True)
-    train_dataloader = DataLoader(training_data, batch_size=batch_size, sampler=sampler)
-    #test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
+    #sampler = WeightedRandomSampler(weights, len(training_data), replacement=True)
+    train_dataloader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    test_dataloader = DataLoader(val_set, batch_size=1, shuffle=False)
 
 
     beta_schedule = beta_schedule(num_timesteps=num_timesteps, type="linear").to(device)
     model = DiffusionModel(betas=beta_schedule, out_channels=channels, channel_scales=(1, 2, 4, 8), d_model=d_model, device=device).to(device)
     temb_model = TemporalEncoding(timesteps=num_timesteps, d_model=d_model).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
-    num_batches = len(training_data) // batch_size + 1
+    num_batches = len(train_set) // batch_size + 1
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs * num_batches)
     # Debug anomalies in computation graph
     torch.autograd.set_detect_anomaly(True)
@@ -83,8 +84,6 @@ if __name__ == "__main__":
     for i in range(epochs):
         model.train()
         for batch_idx, (images, labels) in enumerate(train_dataloader, start=1):
-            #train_images, train_labels = next(iter(train_dataloader))
-            #print(train_images)
             x = images.to(device)
             bs = x.shape[0]
             t_batched = torch.randint(0, num_timesteps, (bs,)).to(device) #Initial batch of timesteps
@@ -96,30 +95,28 @@ if __name__ == "__main__":
             optimizer.step()
             scheduler.step()
 
-            if loss.item() < min_loss:
-                min_loss = loss.item()
-                #save best model so far
-                torch.save(model.state_dict(), "./checkpoints/best_model.pt")
+            
 
             print(f"[Epoch {i+1}] \t Iteration {batch_idx+1}: loss = {loss.item()}")
 
+        #Evaluation 
+        model.eval()
+        running_loss = 0
+        for batch_idx, (images, labels) in enumerate(test_dataloader, start=1):
+            x = images.to(device)
+            bs = x.shape[0]
+            t_batched = torch.randint(0, num_timesteps, (bs,)).to(device) #Initial batch of timesteps
+
+            val_loss = model.loss(x, t_batched, temb_model)
+            running_loss += val_loss.item()
+
+        avg_val_loss = running_loss / len(val_set)
+        print("============Validation============")
+        print(f"[Epoch {i+1}]: loss = {avg_val_loss}")
+        if avg_val_loss < min_loss:
+            min_loss = avg_val_loss
+            #save best model so far
+            torch.save(model.state_dict(), "./checkpoints/best.pt")
+
     # Save model
     # torch.save(model.state_dict(), "./checkpoints/best_model.pt")
-
-    '''
-    Image generation
-    '''
-    # if generate:
-    #     loaded_model = DiffusionModel(betas=beta_schedule, out_channels=channels, device=device).to(device)
-    #     loaded_model.load_state_dict(torch.load("./checkpoints/best_model.pt"))
-    #     loaded_model.eval()
-    #     with torch.no_grad():
-    #         img = loaded_model.generate(shape=(1, channels, 64, 64), noise_fn=gaussian_noise, temb_model=temb_model)
-    #         #Normalize image to [0, 255]
-    #         img = img + 1. / 2.
-    #         img = img.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    #         #print(img)
-    #         #cv2_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    #         plt.imshow(img)
-    #         plt.savefig("./samples/sample_1.png")
-    #         #cv2.imwrite('./samples/sample_1.png', cv2_img)

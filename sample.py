@@ -10,7 +10,7 @@ import cv2
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 channels = 1
 num_timesteps = 1000
-d_model = 32
+d_model = 64
 w = 4
 h = 1
 fig = plt.figure(figsize=(8, 8))
@@ -18,7 +18,7 @@ fig = plt.figure(figsize=(8, 8))
 beta_schedule = beta_schedule(num_timesteps=num_timesteps).to(device)
 temb_model = TemporalEncoding(timesteps=num_timesteps, d_model=d_model).to(device)
 loaded_model = DiffusionModel(betas=beta_schedule, out_channels=channels, channel_scales=(1, 2, 4, 8), d_model=d_model, device=device).to(device)
-loaded_model.load_state_dict(torch.load("./checkpoints/best_model.pt"))
+loaded_model.load_state_dict(torch.load("./checkpoints/best.pt"))
 loaded_model.eval()
 
 with torch.no_grad():
@@ -33,4 +33,4 @@ with torch.no_grad():
         fig.add_subplot(h, w, i)
         plt.imshow(img)
 
-    plt.savefig("./samples/sample_1.png")
+    plt.savefig("./samples/sample.png")

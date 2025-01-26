@@ -47,7 +47,7 @@ class DiffusionModel(nn.Module):
 
 
         # Denoising model (UNet architecture)
-        self.denoiser = UNet(n_channels=128, out_channels=out_channels, n_res_blocks=1, attention_res=(160,), channel_scales=channel_scales, d_model=d_model, timesteps=[]).to(device)
+        self.denoiser = UNet(n_channels=128, out_channels=out_channels, n_res_blocks=1, attention_res=(), channel_scales=channel_scales, d_model=d_model, timesteps=[]).to(device)
 
 
     def get_batch_coeffs(self, a, t, x_shape):
